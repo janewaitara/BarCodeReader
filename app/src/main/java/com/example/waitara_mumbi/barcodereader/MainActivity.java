@@ -1,31 +1,52 @@
 package com.example.waitara_mumbi.barcodereader;
 
-import android.Manifest;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
+import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
-import android.support.v7.widget.ActivityChooserView;
+import android.support.v7.widget.AlertDialogLayout;
 import android.widget.Toast;
 
 import com.google.zxing.Result;
 
+import java.io.IOException;
+
 import me.dm7.barcodescanner.zxing.ZXingScannerView;
+import okhttp3.Interceptor;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.ResponseBody;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
+import retrofit2.Retrofit;
+import retrofit2.converter.gson.GsonConverterFactory;
 
 import static android.Manifest.permission.CAMERA;
 
 //implements the Interface ZXingScannerView.ResultHandler to be able to act as QR Code Scanner as well as Bar Code scanner.
 public class MainActivity extends AppCompatActivity implements ZXingScannerView.ResultHandler {
 
+    //Shared Preferences
+    SharedPreferences sharedPrefs;
+    //naming your shared preference files using a name that's uniquely identifiable to your app
+    public static final String MyPREFERENCES = "com.example.waitara_mumbi.barcodereader.PREFERENCE_FILE_KEY";
+    
     //Barcode
     private static final int REQUEST_CAMERA = 1; //The constant REQUEST_CAMERA is used while getting the permissions from the user to use the camera.
     private ZXingScannerView scannerView; //ZXingScannerView provides the view to scan the QR code and Bar code
+
+
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -55,7 +76,7 @@ public class MainActivity extends AppCompatActivity implements ZXingScannerView.
         return (ContextCompat.checkSelfPermission(MainActivity.this, CAMERA)== PackageManager.PERMISSION_GRANTED);
 
     }
-    public void onRequestPermissionsResult(int requestCode,String permission[] ,int grantResults[]){
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permission ,@NonNull int[] grantResults){
 
         switch (requestCode) {
             case REQUEST_CAMERA:
@@ -133,9 +154,10 @@ and then start the Camera to capture the QR Code using the startCamera() method*
     @Override
     public void handleResult(Result rawResult) {
         final String result = rawResult.getText();
+        getUrlAccessToken(result);
 
 
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        /*AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Scan Result");
         builder.setPositiveButton("OK", new DialogInterface.OnClickListener() {
             @Override
@@ -152,6 +174,162 @@ and then start the Camera to capture the QR Code using the startCamera() method*
         });
         builder.setMessage(rawResult.getText());
         AlertDialog alert1 = builder.create();
-        alert1.show();
+        alert1.show();*/
     }
+
+    public void getUrlAccessToken(final String ticket_no) {
+        sharedPrefs = getSharedPreferences(MyPREFERENCES, Context.MODE_PRIVATE);
+        SharedPreferences.Editor editor = sharedPrefs.edit();
+        editor.putString("clientId", "2");
+        editor.putString("clientSecret", "nGUu9OSbwU8FhEJtWmT2CNMyZVeaKdD6jUHasKDO");
+        editor.putString("grantType", "password");
+        editor.putString("username", "charles@deveint.com");
+        editor.putString("password", "deveint#");
+        editor.apply();
+
+        //create retrofit instance
+        Retrofit.Builder builder = new Retrofit.Builder()
+                .baseUrl("http://178.79.155.54/")
+                .addConverterFactory(GsonConverterFactory.create());//a converter(gson) to convert json(data format) to java objects
+
+        Retrofit retrofit = builder.build();
+
+
+
+        //getting client and call object for the request
+        TicketClient client = retrofit.create(TicketClient.class);//instance of our TicketClient using retrofit.create and passing the TicketClient class[interface]
+        //calling an actual method on our client
+        Call<Authentication> Authenticationcall = client.getAccesstoken(
+                sharedPrefs.getString("clientId", null),
+                sharedPrefs.getString("clientSecret", null),
+                sharedPrefs.getString("grantType", null),
+                sharedPrefs.getString("username", null),
+                sharedPrefs.getString("password", null));
+
+        //execute network request
+        Authenticationcall.enqueue(new Callback<Authentication>() {
+            @Override
+            public void onResponse(Call<Authentication> call, Response<Authentication> response) {
+                verifyTicket(response.body().getAccessToken(),ticket_no);
+
+            }
+
+            @Override
+            public void onFailure(Call<Authentication> call, Throwable t) {
+                Toast.makeText(MainActivity.this, "Big Error"+t, Toast.LENGTH_LONG).show();
+
+            }
+        });
+    }
+
+    public void verifyTicket(final String accessToken, final String ticket_no){
+
+        //OkHttpClient instance
+         OkHttpClient.Builder okhttpBuilder = new  OkHttpClient.Builder();
+
+         okhttpBuilder.addInterceptor(new Interceptor() {
+             @Override
+             public okhttp3.Response intercept(Chain chain) throws IOException {
+                 Request request = chain.request();
+                 Request.Builder newRequest = request.newBuilder().header("Authorization", "Bearer"+ accessToken);
+                 return chain.proceed(newRequest.build());
+             }
+         });
+
+        Retrofit retrofitTicket = new Retrofit.Builder()
+                .baseUrl("http://178.79.155.54/")
+                .client(okhttpBuilder.build())
+                .addConverterFactory(GsonConverterFactory.create())
+                .build();
+
+        TicketClient client_t = retrofitTicket.create(TicketClient.class);
+        Call<CheckTicket> CheckTicketCall = client_t.checkTicket(ticket_no);
+
+        CheckTicketCall.enqueue(new Callback<CheckTicket>() {
+            @Override
+            public void onResponse(Call<CheckTicket> call, Response<CheckTicket> response) {
+                Toast.makeText(MainActivity.this, ""+response, Toast.LENGTH_LONG).show();
+                if (response.isSuccessful()) {
+                    if (response.body().getStatusCode().equals("200")){
+                        showAlert("This ticket has been used", ticket_no);
+                    }
+                    if (response.body().getStatusCode().equals("404")){
+                        showAlert("That ticket does not exist", ticket_no);
+                    }
+                }else {
+                    markTicket(accessToken, ticket_no);
+
+                }
+            }
+
+            @Override
+            public void onFailure(Call<CheckTicket> call, Throwable t) {
+                Toast.makeText(MainActivity.this, "ERROR VERIFYING TICKET", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+    }
+
+
+    public void markTicket(final String accesstoken, String ticket_no){
+
+        OkHttpClient.Builder okhttpBuilder = new OkHttpClient.Builder();
+
+        okhttpBuilder.addInterceptor(new Interceptor() {
+            @Override
+            public okhttp3.Response intercept(Chain chain) throws IOException {
+
+                Request request = chain.request();
+
+                Request.Builder newRequest = request.newBuilder().header("Authorization", "Bearer" + accesstoken);
+
+                return chain.proceed(newRequest.build());
+            }
+        });
+
+        Retrofit retrofitMark = new  Retrofit.Builder()
+                .baseUrl("http://178.79.155.54/")
+                .addConverterFactory(GsonConverterFactory.create())
+                .build();
+
+        TicketClient client_m = retrofitMark.create(TicketClient.class);
+        Call<ResponseBody> markTicketCall = client_m.markTicket(ticket_no);
+
+        markTicketCall.enqueue(new Callback<ResponseBody>() {
+            @Override
+            public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
+                showAlert(null, "MARK TICKET");
+
+            }
+
+            @Override
+            public void onFailure(Call<ResponseBody> call, Throwable t) {
+                Toast.makeText(MainActivity.this, "Error ", Toast.LENGTH_SHORT).show();
+
+            }
+        });
+    }
+
+    private void showAlert(String msg, String title) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle(title);
+        builder.setMessage(msg);
+        builder.setPositiveButton("OK", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                dialog.cancel();
+                scannerView.resumeCameraPreview(MainActivity.this);
+            }
+        });
+        builder.setNegativeButton("CANCEL", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                dialog.dismiss();
+                scannerView.resumeCameraPreview(MainActivity.this);
+            }
+        });
+        AlertDialog alertDialog = builder.create();
+        alertDialog.show();
+    }
+
 }
