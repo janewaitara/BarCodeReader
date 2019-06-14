@@ -16,6 +16,8 @@ import android.os.Bundle;
 import android.support.v7.widget.AlertDialogLayout;
 import android.widget.Toast;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.google.zxing.Result;
 
 import java.io.IOException;
@@ -30,6 +32,7 @@ import retrofit2.Callback;
 import retrofit2.Response;
 import retrofit2.Retrofit;
 import retrofit2.converter.gson.GsonConverterFactory;
+import retrofit2.converter.scalars.ScalarsConverterFactory;
 
 import static android.Manifest.permission.CAMERA;
 
@@ -236,10 +239,16 @@ and then start the Camera to capture the QR Code using the startCamera() method*
              }
          });
 
+
+        Gson gson = new GsonBuilder()
+                .setLenient()
+                .create();
+
         Retrofit retrofitTicket = new Retrofit.Builder()
                 .baseUrl("http://178.79.155.54/")
                 .client(okhttpBuilder.build())
-                .addConverterFactory(GsonConverterFactory.create())
+                .addConverterFactory(ScalarsConverterFactory.create())
+                .addConverterFactory(GsonConverterFactory.create(gson))
                 .build();
 
         TicketClient client_t = retrofitTicket.create(TicketClient.class);
@@ -287,9 +296,16 @@ and then start the Camera to capture the QR Code using the startCamera() method*
             }
         });
 
+
+        Gson gson= new GsonBuilder()
+                .setLenient()
+                .create();
+
         Retrofit retrofitMark = new  Retrofit.Builder()
                 .baseUrl("http://178.79.155.54/")
-                .addConverterFactory(GsonConverterFactory.create())
+                .client(okhttpBuilder.build())
+                .addConverterFactory(ScalarsConverterFactory.create())
+                .addConverterFactory(GsonConverterFactory.create(gson))
                 .build();
 
         TicketClient client_m = retrofitMark.create(TicketClient.class);
