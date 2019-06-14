@@ -24,7 +24,7 @@ public interface TicketClient {
     @FormUrlEncoded
     Call<CheckTicket> checkTicket(@Field("ticket_no") String ticket_no);
 
-    @Headers("Accept: application/json")
+    @Headers("Content-Type: application/json")
     @POST("events/api/mark_ticket")
     @FormUrlEncoded
     Call<ResponseBody> markTicket(@Field("ticket_no")String ticket_no);

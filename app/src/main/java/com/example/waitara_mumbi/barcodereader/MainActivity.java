@@ -302,8 +302,8 @@ and then start the Camera to capture the QR Code using the startCamera() method*
                 .create();
 
         Retrofit retrofitMark = new  Retrofit.Builder()
-                .baseUrl("http://178.79.155.54/")
                 .client(okhttpBuilder.build())
+                .baseUrl("http://178.79.155.54/")
                 .addConverterFactory(ScalarsConverterFactory.create())
                 .addConverterFactory(GsonConverterFactory.create(gson))
                 .build();
