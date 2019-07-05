@@ -2,10 +2,8 @@ package com.example.waitara_mumbi.barcodereader;
 
 import android.content.Context;
 import android.content.DialogInterface;
-import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
-import android.net.Uri;
 import android.os.Build;
 import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
@@ -13,7 +11,7 @@ import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
-import android.support.v7.widget.AlertDialogLayout;
+import android.util.Log;
 import android.widget.Toast;
 
 import com.google.gson.Gson;
@@ -202,7 +200,7 @@ and then start the Camera to capture the QR Code using the startCamera() method*
         //getting client and call object for the request
         TicketClient client = retrofit.create(TicketClient.class);//instance of our TicketClient using retrofit.create and passing the TicketClient class[interface]
         //calling an actual method on our client
-        Call<Authentication> Authenticationcall = client.getAccesstoken(
+        Call<Authentication> AuthenticationCall = client.getAccesstoken(
                 sharedPrefs.getString("clientId", null),
                 sharedPrefs.getString("clientSecret", null),
                 sharedPrefs.getString("grantType", null),
@@ -210,7 +208,7 @@ and then start the Camera to capture the QR Code using the startCamera() method*
                 sharedPrefs.getString("password", null));
 
         //execute network request
-        Authenticationcall.enqueue(new Callback<Authentication>() {
+        AuthenticationCall.enqueue(new Callback<Authentication>() {
             @Override
             public void onResponse(Call<Authentication> call, Response<Authentication> response) {
                 verifyTicket(response.body().getAccessToken(),ticket_no);
@@ -234,7 +232,8 @@ and then start the Camera to capture the QR Code using the startCamera() method*
              @Override
              public okhttp3.Response intercept(Chain chain) throws IOException {
                  Request request = chain.request();
-                 Request.Builder newRequest = request.newBuilder().header("Authorization", "Bearer"+ accessToken);
+                 Request.Builder newRequest = request.newBuilder().header("Authorization", "Bearer "+ accessToken);
+                 ///Log.d(accessToken, "this access token");
                  return chain.proceed(newRequest.build());
              }
          });
@@ -245,8 +244,8 @@ and then start the Camera to capture the QR Code using the startCamera() method*
                 .create();
 
         Retrofit retrofitTicket = new Retrofit.Builder()
-                .baseUrl("http://178.79.155.54/")
                 .client(okhttpBuilder.build())
+                .baseUrl("http://178.79.155.54/")
                 .addConverterFactory(ScalarsConverterFactory.create())
                 .addConverterFactory(GsonConverterFactory.create(gson))
                 .build();
@@ -258,17 +257,18 @@ and then start the Camera to capture the QR Code using the startCamera() method*
             @Override
             public void onResponse(Call<CheckTicket> call, Response<CheckTicket> response) {
                 Toast.makeText(MainActivity.this, ""+response, Toast.LENGTH_LONG).show();
+                Log.d(response.toString() , "This string");
                 if (response.isSuccessful()) {
                     if (response.body().getStatusCode().equals("200")){
-                        showAlert("This ticket has been used", ticket_no);
+                        showAlert("This ticket exists", ticket_no, accessToken, ticket_no);
                     }
                     if (response.body().getStatusCode().equals("404")){
-                        showAlert("That ticket does not exist", ticket_no);
+                        showAlert("That ticket does not exist", ticket_no, accessToken, ticket_no);
                     }
-                }else {
+                }/*else {
                     markTicket(accessToken, ticket_no);
 
-                }
+                }*/
             }
 
             @Override
@@ -280,7 +280,7 @@ and then start the Camera to capture the QR Code using the startCamera() method*
     }
 
 
-    public void markTicket(final String accesstoken, String ticket_no){
+    public void markTicket(final String accessToken, final String ticket_no){
 
         OkHttpClient.Builder okhttpBuilder = new OkHttpClient.Builder();
 
@@ -290,7 +290,7 @@ and then start the Camera to capture the QR Code using the startCamera() method*
 
                 Request request = chain.request();
 
-                Request.Builder newRequest = request.newBuilder().header("Authorization", "Bearer" + accesstoken);
+                Request.Builder newRequest = request.newBuilder().header("Authorization", "Bearer " + accessToken);
 
                 return chain.proceed(newRequest.build());
             }
@@ -309,24 +309,58 @@ and then start the Camera to capture the QR Code using the startCamera() method*
                 .build();
 
         TicketClient client_m = retrofitMark.create(TicketClient.class);
-        Call<ResponseBody> markTicketCall = client_m.markTicket(ticket_no);
+        Call<MarkTicket> markTicketCall = client_m.markTicket(ticket_no);
 
-        markTicketCall.enqueue(new Callback<ResponseBody>() {
+        markTicketCall.enqueue(new Callback<MarkTicket>() {
             @Override
-            public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
-                showAlert(null, "MARK TICKET");
+            public void onResponse(Call<MarkTicket> call, Response<MarkTicket> response) {
+                //showAlert(null, "MARK TICKET");
+                Toast.makeText(MainActivity.this, "Mark", Toast.LENGTH_SHORT).show();
+                if (response.isSuccessful()) {
+                    if (response.body().getStatusCode().equals("200")){
+                        showAlertDialog("This ticket has been Marked successfully", ticket_no);
+                    }
+                    if (response.body().getStatusCode().equals("403")){
+                        showAlertDialog("That ticket has already been used", ticket_no );
+                    }
+                }
+                Toast.makeText(MainActivity.this, "Mark", Toast.LENGTH_SHORT).show();
 
             }
 
             @Override
-            public void onFailure(Call<ResponseBody> call, Throwable t) {
+            public void onFailure(Call<MarkTicket> call, Throwable t) {
                 Toast.makeText(MainActivity.this, "Error ", Toast.LENGTH_SHORT).show();
 
             }
         });
     }
 
-    private void showAlert(String msg, String title) {
+    private void showAlert(String msg, String title,final String accessToken,final String ticket_no) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle(title);
+        builder.setMessage(msg);
+        builder.setPositiveButton("MARK", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                dialog.cancel();
+                markTicket(accessToken, ticket_no);
+                //scannerView.resumeCameraPreview(MainActivity.this);
+            }
+        });
+        builder.setNegativeButton("CANCEL", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                dialog.dismiss();
+                scannerView.resumeCameraPreview(MainActivity.this);
+            }
+        });
+        AlertDialog alertDialog = builder.create();
+        alertDialog.show();
+    }
+
+
+    private void showAlertDialog(String msg, String title) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle(title);
         builder.setMessage(msg);
@@ -347,5 +381,6 @@ and then start the Camera to capture the QR Code using the startCamera() method*
         AlertDialog alertDialog = builder.create();
         alertDialog.show();
     }
+
 
 }
